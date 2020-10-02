@@ -5,21 +5,29 @@
 #ifndef RAY_TRACER_ATTEMPT_3_RAYHEADER_H
 #define RAY_TRACER_ATTEMPT_3_RAYHEADER_H
 typedef struct {
-    double p[3];
-    double k[3];
-    double n;
-    double q;
-    double gcosi;
-    double gcosr;
-    double norm[3];
-    int error;
+    double start[3];     //starting point in 3D space, ie x,y,z
+    double rayDirection[3];     //direction of ray propagation and spread
+    double refractionIndex;       //refraction index ie how shiny something is and how much it will scatter light
+    double distanceToPoint;       //distance from camera to point information
+    double gcosi;    //normalize dot of k
+    double gcosr;   //refracted dot of k
+    double norm[3]; //surface normalized
+    int error;  //error
 } RAY;
 
 typedef struct {
-    double cv;
-    double th;
-    double n;
+    double curvature;
+    double axialThickness;
+    double refractionIndex;
 } Surface;
+
+typedef struct Color{
+    float r;
+    float g;
+    float b;
+} Color;
+
+
 
 int raytrace(RAY *start, RAY data[]);
 int trace(RAY *in, RAY *out, Surface *surf);

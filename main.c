@@ -4,64 +4,65 @@
 //#include "rayFunctions.c"
 
 int nsurf = 5;
-Surface surf[] = {{0.0, 45, 1.0},{0.03,9.0,1.67},{-0.05,4.5,1.728},{-0.5,43.55158,1.0},{0.0, 0.0, 1.0}};
-
-int raytrace(RAY *start, RAY data[])
-{
+Surface surf[] = {{0.0, 45, 1.0},
+                  {0.03,9.0,1.67},
+                  {-0.05,4.5,1.728},
+                  {-0.5,43.55158,1.0},
+                  {0.0, 0.0, 1.0}};
+//sphere surfaces as an array
+int raytrace(RAY *start, RAY data[]){
     int k, image, iret;
     RAY *in, *out;
     Surface *sp;
     sp = surf+1;
-    start->q = 0.0;
+    start->distanceToPoint = 0.0;
     in = start;
     out = data+1;
     image = nsurf-1;
     for (k=1; k<=image; k++) {
         iret = trace(in, out, sp++);
         if (iret<0) return iret;
-
         in = out++;
     }
     return 0;
 }
 
-int trace(RAY *in, RAY *out, Surface *surf)
-{
+int trace(RAY *in, RAY *out, Surface *surf){
     int i;
-    double rni, rno, cv, q;
+    double rni, rno, curv_Vec, start;
     double A,B,C,D;
     double root, power;
-    rni = in->n;
-    rno = surf->n;
-    cv = surf->cv;
-    out->p[0] = in->p[0];
-    out->p[1] = in->p[1];
-    out->p[2] = in->p[2] - in->q;
-    if (cv) {
-        A = cv*rni*rni;
-        B = in->k[2]-cv*dotProduct(in->k,out->p);
-        C = cv*dotProduct(out->p,out->p)-2.0*out->p[2];
+    rni = in->refractionIndex;
+    rno = surf->refractionIndex;
+    curv_Vec = surf->curvature;
+    out->start[0] = in->start[0];
+    out->start[1] = in->start[1];
+    out->start[2] = in->start[2] - in->distanceToPoint;
+    if (curv_Vec) {
+        A = curv_Vec*rni*rni;
+        B = in->rayDirection[2]-curv_Vec*dotProduct(in->rayDirection,out->start);
+        C = curv_Vec*dotProduct(out->start,out->start)-2.0*out->start[2];
         D = B*B-A*C;
         if (D<0.0) {
             out->error = -1;
             return out->error;
         }
         D = sqrt(D);
-        q = C/(B+(B>0? D: -D));
+        start = C/(B+(B>0? D: -D));
     }
     else {
-        if (in->k[2]==0.0) {
+        if (in->rayDirection[2]==0.0) {
             out->error =  -1;
             return out->error;
         }
-        q = -out->p[2]/in->k[2];
+        start = -out->start[2]/in->rayDirection[2];
     }
-    in->q = q;
-    out->q = surf->th;
-    for (i=0; i<3; i++) out->p[i] += q * in->k[i];
-    for (i=0; i<3; i++) out->norm[i] = -cv*out->p[i];
+    in->distanceToPoint = start;
+    out->distanceToPoint = surf->axialThickness;
+    for (i=0; i<3; i++) out->start[i] += start * in->rayDirection[i];
+    for (i=0; i<3; i++) out->norm[i] = -curv_Vec*out->start[i];
     out->norm[2] += 1.0;
-    out->gcosi = dotProduct(in->k,out->norm);
+    out->gcosi = dotProduct(in->rayDirection,out->norm);
     root = out->gcosi*out->gcosi + (rno+rni)*(rno - rni);
     if (root<0.0) {
         out->error = -2;
@@ -70,8 +71,8 @@ int trace(RAY *in, RAY *out, Surface *surf)
     root = sqrt(root);
     out->gcosr = (out->gcosi>0.0? root: -root);
     power = out->gcosr - out->gcosi;
-    for (i=0; i<3; i++) out->k[i] = in->k[i] + power*out->norm[i];
-    out->n = rno;
+    for (i=0; i<3; i++) out->rayDirection[i] = in->rayDirection[i] + power*out->norm[i];
+    out->refractionIndex = rno;
     out->error = 0;
     return out->error;
 }
@@ -83,16 +84,16 @@ int print_ray(RAY *ray)
         printf("Surface Not Hit\n");
         return ray->error;
     }
-    printf("surface intersection ");
-    print_vector(ray->p);
+    printf("surface intersection: ");
+    print_vector(ray->start);
     if (ray->error==0) {
-        printf("optical direction cosines ");
-        print_vector(ray->k);
+        printf("optical direction cosines: ");
+        print_vector(ray->rayDirection);
     }
-    printf("surface normal ");
+    printf("surface normal: ");
     print_vector(ray->norm);
-    printf("q %12.6f G_COSI %12.6f G_COSR %12.6f\n",
-           ray->q,ray->gcosi,ray->gcosr);
+    printf("Distance: %12.6f G_COSI %12.6f G_COSR %12.6f\n",
+           ray->distanceToPoint,ray->gcosi,ray->gcosr);
     if (ray->error==-2) {
         printf("TOTAL INTERNAL REFLECTION\n");
         return ray->error;
@@ -112,14 +113,14 @@ double dotProduct(double a[3], double b[3])
     return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 }
 
-void vectorNormalize(double v[3], double norm)
+void vectorNormalize(double vector[3], double normalize)
 {
     int i;
-    double vn;
-    vn = v[0]*v[0]+v[1]*v[1]+v[2]*v[2];
-    if (vn==0.0) return;
-    vn = norm/sqrt(vn);
-    for (i=0; i<3; i++) v[i] *= vn;
+    double vector_normalized;
+    vector_normalized = vector[0]*vector[0]+vector[1]*vector[1]+vector[2]*vector[2];
+    if (vector_normalized==0.0) return;
+    vector_normalized = normalize/sqrt(vector_normalized);
+    for (i=0; i<3; i++) vector[i] *= vector_normalized;
 }
 
 int main()
@@ -127,20 +128,20 @@ int main()
     int i, iret;
     RAY ray[5], enp[1], *obj;
     obj = ray;
-    obj->p[0] = 0.0;
-    obj->p[1] = 0.0;
-    obj->p[2] = 0.0;
-    enp->p[0] = 0.0;
-    enp->p[1] = 12.5;
-    enp->p[2] = 0.0;
+    obj->start[0] = 0.0;
+    obj->start[1] = 0.0;
+    obj->start[2] = 0.0;
+    enp->start[0] = 0.0;
+    enp->start[1] = 12.5;
+    enp->start[2] = 0.0;
     /* calculate ray optical direction cosines */
-    for (i=0; i<3; i++) obj->k[i] = enp->p[i] - obj->p[i];
-    obj->k[2] += surf->th;
-    vectorNormalize(obj->k,surf->n);
-    for (i=0; i<3; i++) enp->k[i] = obj->k[i];
-    enp->n = surf->n;
+    for (i=0; i<3; i++) obj->rayDirection[i] = enp->start[i] - obj->start[i];
+    obj->rayDirection[2] += surf->axialThickness;
+    vectorNormalize(obj->rayDirection,surf->refractionIndex);
+    for (i=0; i<3; i++) enp->rayDirection[i] = obj->rayDirection[i];
+    enp->refractionIndex = surf->refractionIndex;
     printf("object point: ");
-    print_vector(obj->p);
+    print_vector(obj->start);
     raytrace(enp,ray);
     for (i=1; i<nsurf; i++) {
         printf("\nSurface %d\n",i);
